@@ -66,9 +66,9 @@ resource "google_project_iam_member" "cluster_service_account_user" {
 }
 
 resource "google_compute_instance" "default" {
-  name         = "n1-standard-8-instance"
+  name         = "terraform-node"
   machine_type = "n1-standard-8"
-  zone         = "us-central1-a"
+  zone         = var.zone
 
   boot_disk {
     initialize_params {
@@ -88,5 +88,24 @@ resource "google_compute_instance" "default" {
     email  = google_service_account.terraform-provision.email
     scopes = ["cloud-platform"]
   }
+
+  metadata_startup_script = <<-EOT
+    #!/bin/bash
+    apt-get update
+    apt-get install -y git wget make
+    wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+    echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+    apt update && apt install terraform
+    wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+    echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+    apt update &&  apt install packer
+    wget https://go.dev/dl/go1.20.5.linux-amd64.tar.gz
+    tar -C /usr/local -xzf go1.20.5.linux-amd64.tar.gz
+    export PATH=$PATH:/usr/local/go/bin
+    git clone https://github.com/GoogleCloudPlatform/hpc-toolkit.git
+    echo export PATH=$PATH:/usr/local/go/bin:$HOME/hpc-toolkit >> ~/.bashrc
+    cd hpc-toolkit &&\
+      make
+  EOT
 }
 
