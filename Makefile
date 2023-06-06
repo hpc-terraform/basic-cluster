@@ -1,8 +1,9 @@
 path_kill_idle =$(shell pwd)/kill_idle.sh
 base_output=build
 output_dir=${base_output}/cluster
+YAML_FILE= my.yaml
 
-run_toolkit: full.yaml
+run_toolkit: ${YAML_FILE}
 	ghpc create full.yaml -w -o ${base_output} --vars path_kill_idle=${path_kill_idle}
 
 

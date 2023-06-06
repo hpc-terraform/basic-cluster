@@ -1,30 +1,189 @@
 
-blueprint_name: sep-devel
+blueprint_name: basic_build
 
 vars:
-  project_id:  sep-storage ## Set GCP Project ID Here ##
-  deployment_name: sep-devel
+  project_id:  earth-clapp ## Set GCP Project ID Here ##
+  #Don't change the following line (requires makefile edits)
+  deployment_name: cluster
+  network_name: sep-cluster-net
+  subnetwork_name: sep-cluster-sub
   region: us-central1
-  zone: us-central1-c
+  zones: 
+  - us-central1-a
+  - us-central1-c
+  - us-central1-f
+  zone: us-central1-a
   new_image_family: sep-base-image
-  enable_reconfigure: true
+  filestore_size: 1024
+  filestore_name: clapp_shared
+  #CHANGE the sdss-climateres to your project the service account already been created
+  p_service_account:  name=cluster-permissions@sdss-climateres.iam.gserviceaccount.com
+
+  #this will be overwritten in the makefile
+  path_kill_idle: /home/clapp/basic-cluster/kill_idle.sh
 
 deployment_groups:
-- group: primary
+- group: network
   modules:
-  - id: cluster_network
-    source: modules/network/pre-existing-vpc
+  - id: network
+    source: modules/network/vpc
     settings: 
-      network_name:  sep-cluster-net
-      subnetwork_name:  sep-cluster-sub
+      network_name:  $(vars.network_name)
+      subnetwork_name:  $(vars.subnetwork_name)
 
+- group: filestore
+  modules:
   - id: homefs
-    source: modules/file-system/pre-existing-network-storage
+    source: modules/file-system/filestore
+    use: [network]
     settings:
-      server_ip: 10.67.27.10
-      remote_mount: sep_shared_disk
-      fs_type: nfs
       local_mount: /home
+      filestore_share_name: $(vars.filestore_name)
+      size_gb: $(vars.filestore_size)
+- group: desktop
+  modules:
+  - id: remote-desktop
+    source: community/modules/remote-desktop/chrome-remote-desktop
+    use:
+    - network
+    - homefs
+    settings:
+      install_nvidia_driver: true
+      name_prefix: cluster-display
+      disk_size_gb: 60
+- group: disk
+  modules:
+  - id: scripts_for_image
+    source: modules/scripts/startup-script
+    settings:
+      runners:
+      - type: data
+        source: $(vars.path_kill_idle)
+        destination: /usr/bin/kill_idle.sh
+      - type: shell
+        destination: startup_script
+        content: |
+          #!/bin/sh
+          sudo yum -y update
+          sudo yum -y wget iproute
+          sudo yum -y  install org-x11-server-Xorg xorg-x11-xauth 
+          sudo cat X11Forwarding yes >>/etc/ssh/sshd_config
+          sudo cat X11DisplayOffset 10 >>/etc/ssh/sshd_config
+          sudo cat X11UseLocalhost no >>/etc/ssh/sshd_config
+          sudo yum -y install code
+          sudo yum -y install bash-completion bash-completion-extras
+          
+
+    outputs: [startup_script]
+
+- group: packer
+  modules:
+  - id: custom-image
+
+    source: modules/packer/custom-image
+    kind: packer
+    settings:
+      disk_size: 40
+      subnetwork_name: $(vars.subnetwork_name)
+      source_image_project_id: [schedmd-slurm-public]
+      source_image_family: schedmd-slurm-21-08-8-hpc-centos-7
+      image_family: $(vars.new_image_family)
+
+- group: cluster
+  modules:
+
+  - id: spack
+    source: community/modules/scripts/spack-install
+    settings:
+      install_dir: /apps/spack
+      log_file: /var/log/spack.log
+      configs:
+      - type: file
+        scope: defaults
+        content: |
+          config:
+            build_stage:
+              - /apps/spack/spack-stage
+      - type: file
+        scope: defaults
+        content: |
+          modules:
+            default:
+              tcl:
+                hash_length: 0
+                all:
+                  conflict:
+                    - '{name}'
+                projections:
+                  all: '{name}/{version}-{compiler.name}-{compiler.version}'
+      - type: 'file'
+        scope: 'site'
+        content: |
+          packages:
+            slurm:
+              externals:
+                - spec: slurm@21-08-8-2
+                  prefix: /usr/local
+              buildable: False
+      compilers:
+      - gcc@8.2.0 target=x86_64
+      environments:
+      - name: wrfv3
+        type: file
+        content: |
+          spack:
+            definitions:
+            - compilers:
+              - gcc@8.2.0
+            - mpis:
+              - intel-mpi@2018.4.274
+            - mpi_packages:
+              - wrf@3.9.1.1 build_type=dm+sm compile_type=em_real nesting=basic ~pnetcdf
+            specs:
+            - matrix:
+              - - $mpis
+              - - $%compilers
+            - matrix:
+              - - $mpi_packages
+              - - $%compilers
+              - - $^mpis
+  - id: controller-setup
+    source: modules/scripts/startup-script
+    settings:
+      runners:
+      - $(spack.install_spack_deps_runner)
+      - $(spack.install_spack_runner)
+      - type: shell
+        destination: wrfv3_setup.sh
+        content: |
+          #!/bin/bash
+          source /apps/spack/share/spack/setup-env.sh
+          spack env activate wrfv3
+          chmod -R a+rwX /apps/spack/var/spack/environments/wrfv3
+          mkdir -p /apps/wrfv3
+          chmod a+rwx /apps/wrfv3
+          cd /apps/wrfv3
+          wget --no-verbose https://www2.mmm.ucar.edu/wrf/bench/conus12km_v3911/bench_12km.tar.bz2
+          tar xjf bench_12km.tar.bz2
+      - type: data
+        destination: /apps/wrfv3/submit_wrfv3.sh
+        content: |
+          #!/bin/bash
+          #SBATCH -N 2
+          #SBATCH --ntasks-per-node 30
+
+          source /apps/spack/share/spack/setup-env.sh
+          spack env activate wrfv3
+
+          # Check that wrf.exe exists
+          which wrf.exe
+          cd $SLURM_SUBMIT_DIR
+          cp /apps/wrfv3/bench_12km/* .
+          WRF=`spack location -i wrf`
+          ln -s $WRF/run/* .
+          scontrol show hostnames ${SLURM_JOB_NODELIST} > hostfile
+
+          mpirun -n 60 -hostfile hostfile -ppn ${SLURM_NTASKS_PER_NODE} wrf.exe
 
   - id: debug_node_group
     source: community/modules/compute/schedmd-slurm-gcp-v5-node-group
@@ -34,7 +193,7 @@ deployment_groups:
       disk_size_gb: 40
       can_ip_forward: true
       service_account:
-          email: name=sep-cluster-access@sep-storage.iam.gserviceaccount.com
+          email: $(vars.p_service_account)
           scopes:
           - https://www.googleapis.com/auth/devstorage.read_write
       instance_image:
@@ -47,7 +206,7 @@ deployment_groups:
       can_ip_forward: true
       node_count_dynamic_max: 12
       service_account:  
-          email: name=sep-cluster-access@sep-storage.iam.gserviceaccount.com
+          email: $(vars.p_service_account)
           scopes:
           - https://www.googleapis.com/auth/devstorage.read_write
       machine_type: c2-standard-60
@@ -62,7 +221,7 @@ deployment_groups:
       node_count_dynamic_max: 30
       can_ip_forward: true
       service_account:  
-          email: name=sep-cluster-access@sep-storage.iam.gserviceaccount.com
+          email: $(vars.p_service_account)
           scopes:
           - https://www.googleapis.com/auth/devstorage.read_write
       enable_spot_vm: true
@@ -80,7 +239,7 @@ deployment_groups:
       can_ip_forward: true
       machine_type: a2-highgpu-1g
       service_account:  
-          email: name=sep-cluster-access@sep-storage.iam.gserviceaccount.com
+          email: $(vars.p_service_account)
           scopes:
           - https://www.googleapis.com/auth/devstorage.read_write
       disk_size_gb: 100
@@ -99,7 +258,7 @@ deployment_groups:
       machine_type: a2-highgpu-4g
       disk_size_gb: 100
       service_account:  
-          email: name=sep-cluster-access@sep-storage.iam.gserviceaccount.com
+          email: $(vars.p_service_account)
           scopes:
           - https://www.googleapis.com/auth/devstorage.read_write
       instance_image:
@@ -116,7 +275,7 @@ deployment_groups:
       can_ip_forward: true
       machine_type: n1-standard-32
       service_account:  
-          email: name=sep-cluster-access@sep-storage.iam.gserviceaccount.com
+          email: $(vars.p_service_account)
           scopes:
           - https://www.googleapis.com/auth/devstorage.read_write
       disk_size_gb: 100
@@ -135,7 +294,7 @@ deployment_groups:
       disk_size_gb: 2000
       can_ip_forward: true
       service_account:  
-          email: name=sep-cluster-access@sep-storage.iam.gserviceaccount.com
+          email: $(vars.p_service_account)
           scopes:
           - https://www.googleapis.com/auth/devstorage.read_write
       instance_image:
@@ -144,7 +303,7 @@ deployment_groups:
   - id: debug_partition
     source: community/modules/compute/schedmd-slurm-gcp-v5-partition
     use:
-    - cluster_network
+    - network
     - homefs
     - debug_node_group
     settings:
@@ -153,21 +312,12 @@ deployment_groups:
       is_default: true
       partition_name: debug
 
-  - id: remote-desktop
-    source: community/modules/remote-desktop/chrome-remote-desktop
-    use:
-    - cluster_network
-    - homefs
-    settings:
-      install_nvidia_driver: true
-      name_prefix: sep-display
-      disk_size_gb: 60
 
 
   - id: compute_partition
     source: community/modules/compute/schedmd-slurm-gcp-v5-partition
     use:
-    - cluster_network
+    - network
     - homefs
     - compute_node_group
     settings:
@@ -177,7 +327,7 @@ deployment_groups:
   - id: spot_partition
     source: community/modules/compute/schedmd-slurm-gcp-v5-partition
     use:
-    - cluster_network
+    - network
     - homefs
     - spot_node_group
     settings:
@@ -187,7 +337,7 @@ deployment_groups:
   - id: a100_single_partition
     source: community/modules/compute/schedmd-slurm-gcp-v5-partition
     use:
-    - cluster_network
+    - network
     - homefs
     - a2_single_group
     settings:
@@ -197,7 +347,7 @@ deployment_groups:
   - id: a100_quad_partition
     source: community/modules/compute/schedmd-slurm-gcp-v5-partition
     use:
-    - cluster_network
+    - network
     - homefs
     - a2_quad_group
     settings:
@@ -207,7 +357,7 @@ deployment_groups:
   - id: t4_partition
     source: community/modules/compute/schedmd-slurm-gcp-v5-partition
     use:
-    - cluster_network
+    - network
     - homefs
     - t4_group
     settings:
@@ -217,7 +367,7 @@ deployment_groups:
   - id: bigmem_partition
     source: community/modules/compute/schedmd-slurm-gcp-v5-partition
     use:
-    - cluster_network
+    - network
     - homefs
     - bigmem_group
     settings:
@@ -232,7 +382,7 @@ deployment_groups:
   - id: slurm_controller
     source: community/modules/scheduler/schedmd-slurm-gcp-v5-controller
     use:
-    - cluster_network
+    - network
     - homefs
     - debug_partition  # debug partition will be default as it is listed first
     - compute_partition
@@ -245,6 +395,7 @@ deployment_groups:
       can_ip_forward: true
       enable_reconfigure: true
       machine_type: c2-standard-4
+      controller_startup_script: $(controller-setup.startup_script)
       compute_startup_script: |
         #!/bin/sh
         chmod 755 /usr/bin/kill_idle.sh
@@ -258,7 +409,7 @@ deployment_groups:
   - id: slurm_login
     source: community/modules/scheduler/schedmd-slurm-gcp-v5-login
     use:
-    - cluster_network
+    - network
     - homefs
     - slurm_controller
     settings:
