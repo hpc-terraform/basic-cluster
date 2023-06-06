@@ -1,0 +1,354 @@
+
+blueprint_name: basic_build
+
+vars:
+  project_id:  earth-clapp ## Set GCP Project ID Here ##
+  deployment_name: cluster
+  network_name: sep-cluster-net
+  subnetwork_name: sep-cluster-sub
+  region: us-central1
+  zones: 
+  - us-central1-a
+  - us-central1-c
+  - us-central1-f
+  zone: us-central1-a
+  new_image_family: sep-base-image
+  enable_reconfigure: true
+  filestore_size: 1024
+  filestore_name: clapp_shared
+  p_service_account:  name=sep-cluster-access@sep-storage.iam.gserviceaccount.com
+  path_kill_idle: /home/clapp/basic-cluster/kill_idle.sh
+
+deployment_groups:
+- group: network
+  modules:
+  - id: network
+    source: modules/network/vpc
+    settings: 
+      network_name:  $(vars.network_name)
+      subnetwork_name:  $(vars.subnetwork_name)
+
+- group: filestore
+  modules:
+  - id: homefs
+    source: modules/file-system/filestore
+    use: [network]
+    settings:
+      local_mount: /home
+      filestore_share_name: $(vars.filestore_name)
+      size_gb: $(vars.filestore_size)
+- group: desktop
+  modules:
+  - id: remote-desktop
+    source: community/modules/remote-desktop/chrome-remote-desktop
+    use:
+    - network
+    - homefs
+    settings:
+      install_nvidia_driver: true
+      name_prefix: cluster-display
+      disk_size_gb: 60
+- group: disk
+  modules:
+  - id: scripts_for_image
+    source: modules/scripts/startup-script
+    settings:
+      runners:
+      - type: data
+        source: $(vars.path_kill_idle)
+        destination: /usr/bin/kill_idle.sh
+      - type: shell
+        destination: startup_script
+        content: |
+          #!/bin/sh
+          sudo yum remove docker \
+                  docker-client \
+                  docker-client-latest \
+                  docker-common \
+                  docker-latest \
+                  docker-latest-logrotate \
+                  docker-logrotate \
+                  docker-engine
+          sudo yum install -y yum-utils
+          sudo yum-config-manager \
+            --add-repo \
+            https://download.docker.com/linux/centos/docker-ce.repo
+          sudo yum -y install docker-ce docker-ce-cli containerd.io \
+            docker-compose-plugin
+          sudo systemctl enable docker
+          sudo yum -y update
+          sudo yum -y wget iproute
+          sudo yum -y  install org-x11-server-Xorg xorg-x11-xauth 
+          sudo cat X11Forwarding yes >>/etc/ssh/sshd_config
+          sudo cat X11DisplayOffset 10 >>/etc/ssh/sshd_config
+          sudo cat X11UseLocalhost no >>/etc/ssh/sshd_config
+          cd /tmp &&\
+           sudo wget https://dl.google.com/linux/direct/google-chrome-stable_current_x86_64.rpm &&\
+           sudo yum -y localinstall google-chrome-stable_current_x86_64.rpm
+          sudo rpm --import https://packages.microsoft.com/keys/microsoft.asc
+          sudo echo "[code]">> /etc/yum.repos.d/vscode.repo
+          sudo echo "name=Visual Studio Code">> /etc/yum.repos.d/vscode.repo
+          sudo echo "baseurl=https://packages.microsoft.com/yumrepos/vscode">> /etc/yum.repos.d/vscode.repo
+          sudo echo "enabled=1">> /etc/yum.repos.d/vscode.repo
+          sudo echo "gpgcheck=1">> /etc/yum.repos.d/vscode.repo
+          sudo echo "gpgkey=https://packages.microsoft.com/keys/microsoft.asc">> /etc/yum.repos.d/vscode.repo
+          sudo systemctl enable docker.service
+          sudo systemctl enable containerd.service
+          sudo yum -y install code
+          sudo yum -y install bash-completion bash-completion-extras
+          sudo usermod -aG docker clapp_stanford_edu 
+          sudo usermod -aG docker sfarris_stanford_edu
+          sudo usermod -aG docker arustam_stanford_edu 
+          sudo usermod -aG docker tculliso_stanford_edu
+          sudo usermod -aG docker jdstitt_stanford_edu
+          sudo usermod -aG docker prgiven_stanford_edu
+          ln -s /home/web /web
+          
+
+    outputs: [startup_script]
+
+- group: packer
+  modules:
+  - id: custom-image
+
+    source: modules/packer/custom-image
+    kind: packer
+    settings:
+      disk_size: 40
+      subnetwork_name: $(vars.subnetwork_name)
+      source_image_project_id: [schedmd-slurm-public]
+      source_image_family: schedmd-slurm-21-08-8-hpc-centos-7
+      image_family: $(vars.new_image_family)
+
+- group: cluster
+  modules:
+  - id: debug_node_group
+    source: community/modules/compute/schedmd-slurm-gcp-v5-node-group
+    settings:
+      node_count_dynamic_max: 12
+      machine_type: c2-standard-4
+      disk_size_gb: 40
+      can_ip_forward: true
+      service_account:
+          email: $(vars.p_service_account)
+          scopes:
+          - https://www.googleapis.com/auth/devstorage.read_write
+      instance_image:
+        family: $(vars.new_image_family)
+        project: $(vars.project_id)
+
+  - id: compute_node_group
+    source: community/modules/compute/schedmd-slurm-gcp-v5-node-group
+    settings:
+      can_ip_forward: true
+      node_count_dynamic_max: 12
+      service_account:  
+          email: $(vars.p_service_account)
+          scopes:
+          - https://www.googleapis.com/auth/devstorage.read_write
+      machine_type: c2-standard-60
+      disk_size_gb: 100
+      instance_image:
+        family: $(vars.new_image_family)
+        project: $(vars.project_id)
+
+  - id: spot_node_group
+    source: community/modules/compute/schedmd-slurm-gcp-v5-node-group
+    settings:
+      node_count_dynamic_max: 30
+      can_ip_forward: true
+      service_account:  
+          email: $(vars.p_service_account)
+          scopes:
+          - https://www.googleapis.com/auth/devstorage.read_write
+      enable_spot_vm: true
+      preemptible: true
+      machine_type: c2-standard-60
+      disk_size_gb: 100
+      instance_image:
+        family: $(vars.new_image_family)
+        project: $(vars.project_id)
+
+  - id: a2_single_group
+    source: community/modules/compute/schedmd-slurm-gcp-v5-node-group
+    settings:
+      node_count_dynamic_max: 4
+      can_ip_forward: true
+      machine_type: a2-highgpu-1g
+      service_account:  
+          email: $(vars.p_service_account)
+          scopes:
+          - https://www.googleapis.com/auth/devstorage.read_write
+      disk_size_gb: 100
+      instance_image:
+        family: $(vars.new_image_family)
+        project: $(vars.project_id)
+      guest_accelerator:
+      - type: nvidia-tesla-a100
+        count: 1
+
+  - id: a2_quad_group
+    source: community/modules/compute/schedmd-slurm-gcp-v5-node-group
+    settings:
+      can_ip_forward: true
+      node_count_dynamic_max: 4
+      machine_type: a2-highgpu-4g
+      disk_size_gb: 100
+      service_account:  
+          email: $(vars.p_service_account)
+          scopes:
+          - https://www.googleapis.com/auth/devstorage.read_write
+      instance_image:
+        family: $(vars.new_image_family)
+        project: $(vars.project_id)
+      guest_accelerator:
+      - type: nvidia-tesla-a100
+        count: 4
+
+  - id: t4_group
+    source: community/modules/compute/schedmd-slurm-gcp-v5-node-group
+    settings:
+      node_count_dynamic_max: 4
+      can_ip_forward: true
+      machine_type: n1-standard-32
+      service_account:  
+          email: $(vars.p_service_account)
+          scopes:
+          - https://www.googleapis.com/auth/devstorage.read_write
+      disk_size_gb: 100
+      instance_image:
+        family: $(vars.new_image_family)
+        project: $(vars.project_id)
+      guest_accelerator:
+      - type: nvidia-tesla-t4
+        count: 1
+
+  - id: bigmem_group
+    source: community/modules/compute/schedmd-slurm-gcp-v5-node-group
+    settings:
+      machine_type: m1-ultramem-40
+      node_count_dynamic_max: 2
+      disk_size_gb: 2000
+      can_ip_forward: true
+      service_account:  
+          email: $(vars.p_service_account)
+          scopes:
+          - https://www.googleapis.com/auth/devstorage.read_write
+      instance_image:
+        family: $(vars.new_image_family)
+        project: $(vars.project_id)
+  - id: debug_partition
+    source: community/modules/compute/schedmd-slurm-gcp-v5-partition
+    use:
+    - network
+    - homefs
+    - debug_node_group
+    settings:
+      enable_placement: false
+      enable_reconfigure: true
+      is_default: true
+      partition_name: debug
+
+
+
+  - id: compute_partition
+    source: community/modules/compute/schedmd-slurm-gcp-v5-partition
+    use:
+    - network
+    - homefs
+    - compute_node_group
+    settings:
+      partition_name: compute
+      enable_reconfigure: true
+
+  - id: spot_partition
+    source: community/modules/compute/schedmd-slurm-gcp-v5-partition
+    use:
+    - network
+    - homefs
+    - spot_node_group
+    settings:
+      partition_name: spot
+      enable_reconfigure: true 
+
+  - id: a100_single_partition
+    source: community/modules/compute/schedmd-slurm-gcp-v5-partition
+    use:
+    - network
+    - homefs
+    - a2_single_group
+    settings:
+      partition_name: a100s
+      enable_reconfigure: true
+
+  - id: a100_quad_partition
+    source: community/modules/compute/schedmd-slurm-gcp-v5-partition
+    use:
+    - network
+    - homefs
+    - a2_quad_group
+    settings:
+      partition_name: a100q
+      enable_reconfigure: true
+
+  - id: t4_partition
+    source: community/modules/compute/schedmd-slurm-gcp-v5-partition
+    use:
+    - network
+    - homefs
+    - t4_group
+    settings:
+      partition_name: t4
+      enable_reconfigure: true
+
+  - id: bigmem_partition
+    source: community/modules/compute/schedmd-slurm-gcp-v5-partition
+    use:
+    - network
+    - homefs
+    - bigmem_group
+    settings:
+      partition_name: bigmem
+      enable_reconfigure: true
+
+ 
+  - id: hpc_dashboard
+    source: modules/monitoring/dashboard
+    outputs: [instructions]
+
+  - id: slurm_controller
+    source: community/modules/scheduler/schedmd-slurm-gcp-v5-controller
+    use:
+    - network
+    - homefs
+    - debug_partition  # debug partition will be default as it is listed first
+    - compute_partition
+    - spot_partition
+    - a100_single_partition
+    - a100_quad_partition
+    - t4_partition
+    - bigmem_partition
+    settings:
+      can_ip_forward: true
+      enable_reconfigure: true
+      machine_type: c2-standard-4
+      compute_startup_script: |
+        #!/bin/sh
+        chmod 755 /usr/bin/kill_idle.sh
+        /usr/bin/kill_idle.sh &
+
+     # controller_startup_script: |
+     #   echo PrologFlags=X11 >> /usr/local/etc/slurm/slurm.conf
+     #   scontrol reconfigure
+    
+
+  - id: slurm_login
+    source: community/modules/scheduler/schedmd-slurm-gcp-v5-login
+    use:
+    - network
+    - homefs
+    - slurm_controller
+    settings:
+      disk_size_gb: 80
+      machine_type: c2-standard-4
+
