@@ -24,6 +24,21 @@ Start your cloudshell
   - Set at minimum the project-id
 
 - cd setup &&
+
     terrafrom init
+
     terraform plan 
+    
     terraform apply --auto-approve
+    
+ In a couple minutes you should then have a node with all the software and permissions you need
+ 
+# Create your cluster 
+
+Start from one of the examples in examples to create your desired cluster
+
+Make sure to change your project_id (at a minimum)
+
+Edit the Makefile so that the yaml variable points to your yaml file
+
+make build_cluster
