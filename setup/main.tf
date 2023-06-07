@@ -102,6 +102,7 @@ resource "google_compute_instance" "default" {
     wget https://go.dev/dl/go1.20.5.linux-amd64.tar.gz
     tar -C /usr/local -xzf go1.20.5.linux-amd64.tar.gz
     export PATH=$PATH:/usr/local/go/bin
+    export HOME=/root
     cd /opt &&\
     git clone https://github.com/GoogleCloudPlatform/hpc-toolkit.git &&\
     echo export PATH=$PATH:/usr/local/go/bin:$HOME/hpc-toolkit >> ~/.bashrc &&\
