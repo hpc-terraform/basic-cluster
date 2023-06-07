@@ -35,10 +35,8 @@ Start your cloudshell
  
 # Create your cluster 
 
-Start from one of the examples in examples to create your desired cluster
-
-Make sure to change your project_id (at a minimum)
-
-Edit the Makefile so that the yaml variable points to your yaml file
-
-make build_cluster
+- Clone this repository to your terraform node
+- Start from one of the examples in `examples' directory to create your desired cluster
+   - Make sure to change your project_id (at a minimum)
+- Edit the Makefile so that the yaml variable points to your yaml file
+- make build_cluster
