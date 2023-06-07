@@ -13,6 +13,14 @@ Go to https://console.cloud.google.com/apis/api/cloudresourcemanager.googleapis.
 
 and enable
 
+## Request a GCP workgroup through Stanford
+  
+  - Give that work group the following gcp permssions (needs to be updated)
+    - iap tunnel user
+    - service account user
+  - Add all users for the system to the workgroup
+
+
 ## Create your terraform node
 
 Start your cloudshell
@@ -21,8 +29,15 @@ Start your cloudshell
 
 - Create a terraform.tfvars file in setup
 
-  - Set at minimum the project-id
-
+  - Set at minimum the 
+    - project-id
+      - Project name
+    - bucket-ro
+      - Unique name for the bucket for read-only
+    - bucket-rw
+      - Unique name for bucket for read/write data
+    - gcp-workgroup
+      - Stanford GCP workgroup from previous step
 - cd setup &&
 
     terrafrom init
@@ -52,7 +67,3 @@ Start your cloudshell
   - Build the cluster
 - Optionally build a machine where people can open a display 
   - make build_desktop
-- Anyone you want to access these nodes will need the permssions (needs to be checked)
-  - Service Account User
-  - IAP tunnel user
-  
