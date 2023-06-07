@@ -36,6 +36,9 @@ Start your cloudshell
 # Create your cluster 
 
 - Clone this repository to your terraform node
+- Add gphpc to your path
+  - echo PATH=$PATH:/opt/ghpc >> ~/.bashrc
+  - . ~/.bashrc
 - Start from one of the examples in `examples' directory to create your desired cluster
    - Make sure to change your project_id (at a minimum)
 - Edit the Makefile so that the yaml variable points to your yaml file
