@@ -4,7 +4,7 @@ output_dir=${base_output}/cluster
 YAML_FILE= my.yaml
 
 run_toolkit: ${YAML_FILE}
-	ghpc create full.yaml -w -o ${base_output} --vars path_kill_idle=${path_kill_idle}
+	ghpc  ${YAML_FILE} -w -o ${base_output} --vars path_kill_idle=${path_kill_idle}
 
 
 #NETWORK
