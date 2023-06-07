@@ -126,7 +126,7 @@ data "google_iam_policy" "bucket_read_only_policy" {
     role = "roles/storage.objectViewer"
 
     members = [
-      "user: ${var.location}"
+      "user: ${var.gcp-workgroup}"
     ]
   }
 }
@@ -142,8 +142,8 @@ data "google_iam_policy" "bucket_read_write_policy" {
 }
 
 resource "google_storage_bucket_iam_policy" "bucket_read_only_iam" {
-  bucket      = google_storage_bucket.climateres_read_only.name
-  policy_data = data.google_iam_policy.climateres_read_only_policy.policy_data
+  bucket      = google_storage_bucket.bucket_read_only.name
+  policy_data = data.google_iam_policy.bucket_read_only_policy.policy_data
 }
 
 resource "google_storage_bucket_iam_policy" "bucket_write_only_iam" {
