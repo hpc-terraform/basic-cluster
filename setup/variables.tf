@@ -20,5 +20,20 @@ variable "node-name" {
 }
 
 
+variable "gcp-workgroup" {
+  description = "Name for provisioning node"
+  type        = string
+}
 
 
+
+variable "bucket-ro" {
+  description = "Bucket to create with read-only permission"
+  type        = string
+}
+
+
+variable "bucket-rw" {
+  description = "Bucket to create with read/write permission"
+  type        = string
+}

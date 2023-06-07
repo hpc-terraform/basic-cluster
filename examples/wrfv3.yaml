@@ -5,17 +5,17 @@ vars:
   project_id:  earth-clapp ## Set GCP Project ID Here ##
   #Don't change the following line (requires makefile edits)
   deployment_name: cluster
-  network_name: sep-cluster-net
-  subnetwork_name: sep-cluster-sub
+  network_name: cluster-net
+  subnetwork_name: cluster-sub
   region: us-central1
   zones: 
   - us-central1-a
   - us-central1-c
   - us-central1-f
   zone: us-central1-a
-  new_image_family: sep-base-image
+  new_image_family: base-image
   filestore_size: 1024
-  filestore_name: clapp_shared
+  filestore_name: my_shared
   #CHANGE the sdss-climateres to your project the service account already been created
   p_service_account:  name=cluster-permissions@sdss-climateres.iam.gserviceaccount.com
 

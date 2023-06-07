@@ -3,6 +3,13 @@ base_output=build
 output_dir=${base_output}/cluster
 YAML_FILE= my.yaml
 
+
+prep: 
+	python3 -m venv ~/hpc-run_toolkit
+	~/hpc-toolkit/bin/activate
+	python3 -m pip install --upgrade setuptools cython
+	python3 -m pip install pyyaml httplib2 requests addict google-api-python-client google-cloud-storage  google-cloud  google-cloud-pubsub
+
 run_toolkit: ${YAML_FILE}
 	ghpc  ${YAML_FILE} -w -o ${base_output} --vars path_kill_idle=${path_kill_idle}
 
@@ -65,7 +72,7 @@ destroy_image:
 	terraform -chdir=${output_dir}/disk destroy --auto-approve
 destroy_desktop: 
 	terraform -chdir=${output_dir}/desktop destroy --auto-approve
-destroy_filestore: destroy_cluster destroy_desktop
+destroy_filestore: destroy_cluster 
 	terraform -chdir=${output_dir}/filestore destroy --auto-approve
 destroy_network: destroy_filestore
 	terraform -chdir=${output_dir}/network destroy --auto-approve

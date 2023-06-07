@@ -42,4 +42,17 @@ Start your cloudshell
 - Start from one of the examples in `examples' directory to create your desired cluster
    - Make sure to change your project_id (at a minimum)
 - Edit the Makefile so that the yaml variable points to your yaml file
+- make prep
+  - Install the required python packages in a virtual environment
+- . ~/hpc-toolkit/bin/activate
+  - Activate the environment
+- make build_disk
+  - Build the disk image
 - make build_cluster
+  - Build the cluster
+- Optionally build a machine where people can open a display 
+  - make build_desktop
+- Anyone you want to access these nodes will need the permssions (needs to be checked)
+  - Service Account User
+  - IAP tunnel user
+  

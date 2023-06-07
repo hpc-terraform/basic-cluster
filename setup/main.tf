@@ -92,7 +92,7 @@ resource "google_compute_instance" "default" {
   metadata_startup_script = <<-EOT
     #!/bin/bash
     apt-get update
-    apt-get install -y git wget make
+    apt-get install -y git wget make python3-venv python3-pip
     wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
     echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
     apt update && apt install terraform
@@ -111,3 +111,42 @@ resource "google_compute_instance" "default" {
   EOT
 }
 
+resource "google_storage_bucket" "bucket_read_only" {
+  name     = var.bucket-ro
+  location = "US"
+}
+
+resource "google_storage_bucket" "bucket_read_write" {
+  name     = var.bucket-rw
+  location = "US"
+}
+
+data "google_iam_policy" "bucket_read_only_policy" {
+  binding {
+    role = "roles/storage.objectViewer"
+
+    members = [
+      "user: ${var.location}"
+    ]
+  }
+}
+
+data "google_iam_policy" "bucket_read_write_policy" {
+  binding {
+    role = "roles/storage.objectAdmin"
+
+    members = [
+      "user: ${var.gcp-workgroup}",
+    ]
+  }
+}
+
+resource "google_storage_bucket_iam_policy" "bucket_read_only_iam" {
+  bucket      = google_storage_bucket.climateres_read_only.name
+  policy_data = data.google_iam_policy.climateres_read_only_policy.policy_data
+}
+
+resource "google_storage_bucket_iam_policy" "bucket_write_only_iam" {
+  bucket      = google_storage_bucket.bucket_read_write.name
+  policy_data = data.google_iam_policy.bucket_read_write_policy.policy_data
+}
