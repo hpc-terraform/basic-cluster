@@ -5,8 +5,9 @@ YAML_FILE= my.yaml
 
 
 prep: 
-	python3 -m venv ~/hpc-run_toolkit
-	~/hpc-toolkit/bin/activate
+	echo "PATH=$${PATH}:/opt/hpc-toolkit/">>~/.bashrc
+	python3 -m venv ~/hpc-toolkit
+	. ~/hpc-toolkit/bin/activate
 	python3 -m pip install --upgrade setuptools cython
 	python3 -m pip install pyyaml httplib2 requests addict google-api-python-client google-cloud-storage  google-cloud  google-cloud-pubsub
 
