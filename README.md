@@ -55,7 +55,8 @@ Start your cloudshell
 - Start from one of the examples in `examples' directory to create your desired cluster
    - Make sure to change your project_id (at a minimum)
 - Edit the Makefile so that the yaml variable points to your yaml file
-- make prep
+- make -n prep
+  - Copy the produced text and run in a terminal
   - Install the required python packages in a virtual environment
 - . ~/hpc-toolkit/bin/activate
   - Activate the environment
