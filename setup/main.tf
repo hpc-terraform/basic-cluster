@@ -4,8 +4,8 @@ provider "google" {
 }
 
 resource "google_service_account" "terraform-provision" {
-  account_id   = "terraform-provision"
-  display_name = "Terraform provision"
+  account_id   = "terraform-provisioner"
+  display_name = "Terraform provisioner"
   description  = "Permissions needed for HPC Toolkit"
   project      = var.project_id
 }
@@ -126,7 +126,7 @@ data "google_iam_policy" "bucket_read_only_policy" {
     role = "roles/storage.objectViewer"
 
     members = [
-      "user: ${var.gcp-workgroup}"
+      "group:${var.gcp-workgroup}"
     ]
   }
 }
@@ -136,7 +136,7 @@ data "google_iam_policy" "bucket_read_write_policy" {
     role = "roles/storage.objectAdmin"
 
     members = [
-      "user: ${var.gcp-workgroup}",
+      "group:${var.gcp-workgroup}",
     ]
   }
 }
