@@ -12,7 +12,7 @@ prep:
 	python3 -m pip install pyyaml httplib2 requests addict google-api-python-client google-cloud-storage  google-cloud  google-cloud-pubsub
 
 run_toolkit: ${YAML_FILE}
-	ghpc  ${YAML_FILE} -w -o ${base_output} --vars path_kill_idle=${path_kill_idle}
+	ghpc create  ${YAML_FILE} -w -o ${base_output} --vars path_kill_idle=${path_kill_idle}
 
 
 #NETWORK
